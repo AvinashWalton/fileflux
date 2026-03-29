@@ -880,12 +880,71 @@ document.addEventListener("dragover", (e) => e.preventDefault());
 document.addEventListener("drop", (e) => e.preventDefault());
 
 /* ============================================================
-   12. PDF RESIZER (PDF.js render → jsPDF)
+   SHARED UTILITY: Target-size binary search
+   Renders all PDF pages at a given JPEG quality → returns jsPDF blob size in bytes
+   ============================================================ */
+
+async function renderPdfToJsPDF(pdfDoc, targetWmm, targetHmm, scale, jpegQuality) {
+  const { jsPDF } = jspdf;
+  const MM_TO_PX = 3.7795275591;
+  const targetWpx = targetWmm * MM_TO_PX;
+  const targetHpx = targetHmm * MM_TO_PX;
+  const total = pdfDoc.numPages;
+  let pdf = null;
+
+  for (let i = 1; i <= total; i++) {
+    const page = await pdfDoc.getPage(i);
+    const origVP = page.getViewport({ scale: 1 });
+    const scaleX = targetWpx / origVP.width;
+    const scaleY = targetHpx / origVP.height;
+    const renderScale = scale * Math.min(scaleX, scaleY);
+    const viewport = page.getViewport({ scale: renderScale });
+
+    const canvas = document.createElement("canvas");
+    canvas.width  = Math.round(targetWpx);
+    canvas.height = Math.round(targetHpx);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const offsetX = (canvas.width  - viewport.width)  / 2;
+    const offsetY = (canvas.height - viewport.height) / 2;
+    await page.render({ canvasContext: ctx, viewport, transform: [1,0,0,1,offsetX,offsetY] }).promise;
+
+    const imgData = canvas.toDataURL("image/jpeg", jpegQuality);
+    const orient = targetWmm > targetHmm ? "l" : "p";
+    if (i === 1) {
+      pdf = new jsPDF({ unit: "mm", format: [targetWmm, targetHmm], orientation: orient });
+    } else {
+      pdf.addPage([targetWmm, targetHmm], orient);
+    }
+    pdf.addImage(imgData, "JPEG", 0, 0, targetWmm, targetHmm);
+  }
+  return pdf;
+}
+
+// Binary-search quality to hit targetBytes (±15%)
+async function findQualityForSize(pdfDoc, targetWmm, targetHmm, scale, targetBytes, statusCb) {
+  let lo = 0.05, hi = 0.95, bestPdf = null, bestDiff = Infinity;
+  for (let iter = 0; iter < 9; iter++) {
+    const mid = (lo + hi) / 2;
+    statusCb && statusCb(`Optimizing quality: ${Math.round(mid * 100)}%… (pass ${iter + 1}/9)`);
+    const pdf = await renderPdfToJsPDF(pdfDoc, targetWmm, targetHmm, scale, mid);
+    const blob = pdf.output("blob");
+    const diff = Math.abs(blob.size - targetBytes);
+    if (diff < bestDiff) { bestDiff = diff; bestPdf = pdf; }
+    if (blob.size > targetBytes) hi = mid;
+    else lo = mid;
+    if (diff / targetBytes < 0.08) break; // within 8% — good enough
+  }
+  return bestPdf;
+}
+
+/* ============================================================
+   12. PDF RESIZER (PDF.js render → jsPDF) — with target size
    ============================================================ */
 (function () {
   let _file = null;
 
-  // Page size presets in mm [width, height] — portrait
   const PAGE_SIZES = {
     a4:     [210, 297],
     a3:     [297, 420],
@@ -893,28 +952,32 @@ document.addEventListener("drop", (e) => e.preventDefault());
     legal:  [215.9, 355.6],
   };
 
-  const sizeSelect   = document.getElementById("pdfresize-size");
-  const orientSelect = document.getElementById("pdfresize-orient");
-  const cwInput      = document.getElementById("pdfresize-cw");
-  const chInput      = document.getElementById("pdfresize-ch");
-  const cwWrap       = document.getElementById("custom-w-wrap");
-  const chWrap       = document.getElementById("custom-h-wrap");
-  const fitCB        = document.getElementById("pdfresize-fitcontent");
-  const infoEl       = document.getElementById("pdfresize-info");
-  const progressWrap = document.getElementById("pdfresize-progress");
-  const btn          = document.getElementById("btn-pdfresize");
+  const sizeSelect    = document.getElementById("pdfresize-size");
+  const orientSelect  = document.getElementById("pdfresize-orient");
+  const cwInput       = document.getElementById("pdfresize-cw");
+  const chInput       = document.getElementById("pdfresize-ch");
+  const cwWrap        = document.getElementById("custom-w-wrap");
+  const chWrap        = document.getElementById("custom-h-wrap");
+  const fitCB         = document.getElementById("pdfresize-fitcontent");
+  const targetEnable  = document.getElementById("pdfresize-targetsize-enable");
+  const targetWrap    = document.getElementById("pdfresize-targetsize-wrap");
+  const targetKbInput = document.getElementById("pdfresize-targetkb");
+  const targetUnit    = document.getElementById("pdfresize-targetunit");
+  const infoEl        = document.getElementById("pdfresize-info");
+  const progressWrap  = document.getElementById("pdfresize-progress");
+  const btn           = document.getElementById("btn-pdfresize");
 
-  // Show/hide custom fields
   sizeSelect?.addEventListener("change", () => {
     const isCustom = sizeSelect.value === "custom";
     cwWrap.style.display = isCustom ? "" : "none";
     chWrap.style.display = isCustom ? "" : "none";
   });
+  targetEnable?.addEventListener("change", () => {
+    targetWrap.style.display = targetEnable.checked ? "" : "none";
+  });
 
   setupDropZone("dz-pdfresize", "file-pdfresize", (file) => {
-    if (!file || file.type !== "application/pdf") {
-      showToast("Please select a PDF file.", "error"); return;
-    }
+    if (!file || file.type !== "application/pdf") { showToast("Please select a PDF file.", "error"); return; }
     _file = file;
     markDropZone("dz-pdfresize", file.name);
     infoEl.textContent = `Selected: ${file.name} · ${formatBytes(file.size)}`;
@@ -924,106 +987,78 @@ document.addEventListener("drop", (e) => e.preventDefault());
 
   btn?.addEventListener("click", async () => {
     if (!_file || typeof pdfjsLib === "undefined" || typeof jspdf === "undefined") {
-      showToast("Required libraries not loaded. Check your connection.", "error"); return;
+      showToast("Required libraries not loaded.", "error"); return;
     }
-
     try {
       btn.disabled = true;
       btn.textContent = "Resizing…";
       progressWrap.hidden = false;
 
-      // Determine target size in mm
       const sizeKey = sizeSelect?.value || "a4";
-      let [targetW_mm, targetH_mm] = sizeKey === "custom"
+      let [tw, th] = sizeKey === "custom"
         ? [parseFloat(cwInput.value) || 210, parseFloat(chInput.value) || 297]
         : PAGE_SIZES[sizeKey];
-
-      // Apply orientation
-      if (orientSelect?.value === "landscape" && targetW_mm < targetH_mm) {
-        [targetW_mm, targetH_mm] = [targetH_mm, targetW_mm];
-      }
-
-      // mm → px at 96dpi  (1mm = 3.7795px)
-      const MM_TO_PX = 3.7795275591;
-      const targetW_px = targetW_mm * MM_TO_PX;
-      const targetH_px = targetH_mm * MM_TO_PX;
-
-      const { jsPDF } = jspdf;
-      const pdf = new jsPDF({
-        unit: "mm",
-        format: [targetW_mm, targetH_mm],
-        orientation: targetW_mm > targetH_mm ? "l" : "p",
-      });
+      if (orientSelect?.value === "landscape" && tw < th) [tw, th] = [th, tw];
 
       const arrayBuffer = await _file.arrayBuffer();
       const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      const total = pdfDoc.numPages;
+      const scale = fitCB?.checked ? 1 : 1;
 
-      for (let i = 1; i <= total; i++) {
-        setProgress("pdfresize-fill", "pdfresize-status",
-          Math.round((i / total) * 100), `Processing page ${i}/${total}…`);
-
-        const page = await pdfDoc.getPage(i);
-        const origVP = page.getViewport({ scale: 1 });
-
-        // Scale to fit target size
-        const scaleX = targetW_px / origVP.width;
-        const scaleY = targetH_px / origVP.height;
-        const scale  = fitCB?.checked ? Math.min(scaleX, scaleY) : 1;
-
-        const viewport = page.getViewport({ scale });
-        const canvas = document.createElement("canvas");
-        canvas.width  = Math.round(fitCB?.checked ? targetW_px : viewport.width);
-        canvas.height = Math.round(fitCB?.checked ? targetH_px : viewport.height);
-        const ctx = canvas.getContext("2d");
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Center content on page
-        const offsetX = fitCB?.checked ? (canvas.width  - viewport.width)  / 2 : 0;
-        const offsetY = fitCB?.checked ? (canvas.height - viewport.height) / 2 : 0;
-        await page.render({
-          canvasContext: ctx,
-          viewport,
-          transform: [1, 0, 0, 1, offsetX, offsetY],
-        }).promise;
-
-        const imgData = canvas.toDataURL("image/jpeg", 0.92);
-        if (i > 1) pdf.addPage([targetW_mm, targetH_mm],
-          targetW_mm > targetH_mm ? "l" : "p");
-        pdf.addImage(imgData, "JPEG", 0, 0, targetW_mm, targetH_mm);
+      let pdf;
+      if (targetEnable?.checked && targetKbInput.value) {
+        const unit = targetUnit?.value || "kb";
+        const targetBytes = parseFloat(targetKbInput.value) * (unit === "mb" ? 1048576 : 1024);
+        setProgress("pdfresize-fill", "pdfresize-status", 10, "Starting quality optimization…");
+        pdf = await findQualityForSize(pdfDoc, tw, th, scale, targetBytes,
+          (msg) => setProgress("pdfresize-fill", "pdfresize-status", 50, msg));
+      } else {
+        const total = pdfDoc.numPages;
+        for (let i = 1; i <= total; i++) {
+          setProgress("pdfresize-fill", "pdfresize-status",
+            Math.round((i / total) * 100), `Page ${i}/${total}…`);
+        }
+        pdf = await renderPdfToJsPDF(pdfDoc, tw, th, scale, 0.92);
       }
 
-      pdf.save(`${basename(_file.name)}_resized.pdf`);
-      showToast(`✅ PDF resized to ${targetW_mm}×${targetH_mm}mm & downloaded!`, "success");
+      const blob = pdf.output("blob");
+      setProgress("pdfresize-fill", "pdfresize-status", 100,
+        `Done · Output: ${formatBytes(blob.size)}`);
+      triggerDownload(URL.createObjectURL(blob), `${basename(_file.name)}_resized.pdf`);
+      showToast(`✅ PDF resized to ${tw}×${th}mm · ${formatBytes(blob.size)}`, "success");
     } catch (e) {
       showToast("PDF resize failed: " + e.message, "error");
     } finally {
       btn.disabled = false;
       btn.textContent = "Resize PDF & Download";
-      progressWrap.hidden = true;
+      setTimeout(() => { progressWrap.hidden = true; }, 2500);
     }
   });
 })();
 
 /* ============================================================
-   13. PDF MERGER (PDF.js render → jsPDF)
+   13. PDF MERGER — with optional target file size
    ============================================================ */
 (function () {
-  let _files = []; // ordered array of File objects
+  let _files = [];
 
-  const listEl       = document.getElementById("pdfmerge-list");
-  const infoEl       = document.getElementById("pdfmerge-info");
-  const progressWrap = document.getElementById("pdfmerge-progress");
-  const btn          = document.getElementById("btn-pdfmerge");
+  const listEl        = document.getElementById("pdfmerge-list");
+  const infoEl        = document.getElementById("pdfmerge-info");
+  const progressWrap  = document.getElementById("pdfmerge-progress");
+  const btn           = document.getElementById("btn-pdfmerge");
+  const targetEnable  = document.getElementById("pdfmerge-targetsize-enable");
+  const targetWrap    = document.getElementById("pdfmerge-targetsize-wrap");
+  const targetKbInput = document.getElementById("pdfmerge-targetkb");
+  const targetUnit    = document.getElementById("pdfmerge-targetunit");
 
-  /* ── Render file list with drag-to-reorder ── */
+  targetEnable?.addEventListener("change", () => {
+    targetWrap.style.display = targetEnable.checked ? "" : "none";
+  });
+
   function renderList() {
     listEl.innerHTML = "";
     if (!_files.length) { listEl.hidden = true; infoEl.hidden = true; return; }
-
     listEl.hidden = false;
-    infoEl.textContent = `${_files.length} file(s) · ${formatBytes(_files.reduce((s, f) => s + f.size, 0))} total`;
+    infoEl.textContent = `${_files.length} file(s) · ${formatBytes(_files.reduce((s,f)=>s+f.size,0))} total`;
     infoEl.hidden = false;
 
     const hint = document.createElement("p");
@@ -1036,129 +1071,565 @@ document.addEventListener("drop", (e) => e.preventDefault());
       item.className = "merge-file-item";
       item.draggable = true;
       item.dataset.idx = idx;
-
       item.innerHTML = `
         <span class="merge-file-drag-handle">☰</span>
         <span class="merge-file-name" title="${file.name}">📄 ${file.name}</span>
         <span class="merge-file-size">${formatBytes(file.size)}</span>
-        <button class="merge-file-remove" title="Remove" data-idx="${idx}">✕</button>
-      `;
-
-      // Remove button
+        <button class="merge-file-remove" title="Remove" data-idx="${idx}">✕</button>`;
       item.querySelector(".merge-file-remove").addEventListener("click", (e) => {
         e.stopPropagation();
         _files.splice(parseInt(e.target.dataset.idx), 1);
         renderList();
         btn.disabled = _files.length < 2;
       });
-
-      // Drag events
       let dragSrcIdx = null;
-      item.addEventListener("dragstart", (e) => {
-        dragSrcIdx = idx;
-        item.classList.add("dragging");
-        e.dataTransfer.effectAllowed = "move";
-      });
+      item.addEventListener("dragstart", (e) => { dragSrcIdx = idx; item.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; });
       item.addEventListener("dragend", () => item.classList.remove("dragging"));
-      item.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        item.classList.add("drag-over");
-      });
+      item.addEventListener("dragover", (e) => { e.preventDefault(); item.classList.add("drag-over"); });
       item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
       item.addEventListener("drop", (e) => {
-        e.preventDefault();
-        item.classList.remove("drag-over");
-        const fromIdx = dragSrcIdx;
-        const toIdx   = idx;
-        if (fromIdx === null || fromIdx === toIdx) return;
-        const moved = _files.splice(fromIdx, 1)[0];
-        _files.splice(toIdx, 0, moved);
+        e.preventDefault(); item.classList.remove("drag-over");
+        if (dragSrcIdx === null || dragSrcIdx === idx) return;
+        const moved = _files.splice(dragSrcIdx, 1)[0];
+        _files.splice(idx, 0, moved);
         renderList();
       });
-
       listEl.appendChild(item);
     });
   }
 
-  /* ── Drop zone / file input ── */
   setupDropZone("dz-pdfmerge", "file-pdfmerge", (files) => {
-    const pdfs = files.filter((f) => f.type === "application/pdf");
+    const pdfs = files.filter(f => f.type === "application/pdf");
     if (!pdfs.length) { showToast("Please select PDF files only.", "error"); return; }
-    _files = [..._files, ...pdfs]; // allow adding more files
+    _files = [..._files, ...pdfs];
     renderList();
     btn.disabled = _files.length < 2;
     markDropZone("dz-pdfmerge", `${_files.length} PDF(s) selected`);
   }, { multiple: true });
 
-  /* ── Merge logic ── */
   btn?.addEventListener("click", async () => {
     if (_files.length < 2 || typeof pdfjsLib === "undefined" || typeof jspdf === "undefined") {
       showToast("Need at least 2 PDFs and libraries loaded.", "error"); return;
     }
-
     try {
-      btn.disabled = true;
-      btn.textContent = "Merging…";
+      btn.disabled = true; btn.textContent = "Merging…";
       progressWrap.hidden = false;
 
-      const { jsPDF } = jspdf;
-      let pdf = null;
-      let globalPageCount = 0;
-
+      // Collect all pages info first
+      const allDocs = [];
       for (let fi = 0; fi < _files.length; fi++) {
         setProgress("pdfmerge-fill", "pdfmerge-status",
-          Math.round((fi / _files.length) * 100),
-          `Processing file ${fi + 1}/${_files.length}: ${_files[fi].name}`);
-
-        const arrayBuffer = await _files[fi].arrayBuffer();
-        const srcDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const numPages = srcDoc.numPages;
-
-        for (let pi = 1; pi <= numPages; pi++) {
-          setProgress("pdfmerge-fill", "pdfmerge-status",
-            Math.round(((fi + pi / numPages) / _files.length) * 100),
-            `File ${fi + 1}/${_files.length} — page ${pi}/${numPages}`);
-
-          const page = await srcDoc.getPage(pi);
-          const viewport = page.getViewport({ scale: 2 }); // scale 2x for quality
-
-          const canvas = document.createElement("canvas");
-          canvas.width  = viewport.width;
-          canvas.height = viewport.height;
-          const ctx = canvas.getContext("2d");
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          await page.render({ canvasContext: ctx, viewport }).promise;
-
-          // Page dimensions in mm (72dpi PDF units → mm)
-          const origVP1 = page.getViewport({ scale: 1 });
-          const w_mm = (origVP1.width  / 72) * 25.4;
-          const h_mm = (origVP1.height / 72) * 25.4;
-          const orientation = w_mm > h_mm ? "l" : "p";
-
-          if (globalPageCount === 0) {
-            pdf = new jsPDF({ unit: "mm", format: [w_mm, h_mm], orientation });
-          } else {
-            pdf.addPage([w_mm, h_mm], orientation);
-          }
-
-          const imgData = canvas.toDataURL("image/jpeg", 0.88);
-          pdf.addImage(imgData, "JPEG", 0, 0, w_mm, h_mm);
-          globalPageCount++;
-        }
+          Math.round((fi / _files.length) * 50), `Loading ${_files[fi].name}…`);
+        const ab = await _files[fi].arrayBuffer();
+        const doc = await pdfjsLib.getDocument({ data: ab }).promise;
+        allDocs.push(doc);
       }
 
-      setProgress("pdfmerge-fill", "pdfmerge-status", 100, "Finalizing…");
-      pdf.save("merged.pdf");
-      showToast(`✅ ${globalPageCount} pages from ${_files.length} PDFs merged & downloaded!`, "success");
-    } catch (e) {
+      const useTarget = targetEnable?.checked && targetKbInput.value;
+      let quality = 0.88;
+
+      if (useTarget) {
+        // Estimate with quality 0.7 first, then binary-search
+        const unit = targetUnit?.value || "kb";
+        const targetBytes = parseFloat(targetKbInput.value) * (unit === "mb" ? 1048576 : 1024);
+        setProgress("pdfmerge-fill", "pdfmerge-status", 55, "Optimizing quality for target size…");
+
+        let lo = 0.05, hi = 0.95, bestPdf = null, bestDiff = Infinity;
+        for (let iter = 0; iter < 8; iter++) {
+          const mid = (lo + hi) / 2;
+          setProgress("pdfmerge-fill", "pdfmerge-status", 55 + iter * 5,
+            `Quality pass ${iter+1}/8 — trying ${Math.round(mid*100)}%…`);
+          const testPdf = await buildMergedPdf(allDocs, mid);
+          const blob = testPdf.output("blob");
+          const diff = Math.abs(blob.size - targetBytes);
+          if (diff < bestDiff) { bestDiff = diff; bestPdf = testPdf; }
+          if (blob.size > targetBytes) hi = mid; else lo = mid;
+          if (diff / targetBytes < 0.08) break;
+        }
+        setProgress("pdfmerge-fill", "pdfmerge-status", 100, "Finalizing…");
+        const blob = bestPdf.output("blob");
+        triggerDownload(URL.createObjectURL(blob), "merged.pdf");
+        showToast(`✅ Merged! Output: ${formatBytes(blob.size)}`, "success");
+      } else {
+        setProgress("pdfmerge-fill", "pdfmerge-status", 55, "Building merged PDF…");
+        const pdf = await buildMergedPdf(allDocs, quality,
+          (p, msg) => setProgress("pdfmerge-fill", "pdfmerge-status", 55 + Math.round(p * 40), msg));
+        setProgress("pdfmerge-fill", "pdfmerge-status", 100, "Finalizing…");
+        const blob = pdf.output("blob");
+        triggerDownload(URL.createObjectURL(blob), "merged.pdf");
+        showToast(`✅ ${allDocs.reduce((s,d)=>s+d.numPages,0)} pages merged! ${formatBytes(blob.size)}`, "success");
+      }
+    } catch(e) {
       showToast("PDF merge failed: " + e.message, "error");
     } finally {
-      btn.disabled = false;
-      btn.textContent = "Merge PDFs & Download";
-      progressWrap.hidden = true;
+      btn.disabled = false; btn.textContent = "Merge PDFs & Download";
+      setTimeout(() => { progressWrap.hidden = true; }, 2500);
     }
   });
+
+  async function buildMergedPdf(allDocs, quality, progressCb) {
+    const { jsPDF } = jspdf;
+    let pdf = null, pageCount = 0;
+    const totalPages = allDocs.reduce((s,d) => s + d.numPages, 0);
+    for (const doc of allDocs) {
+      for (let pi = 1; pi <= doc.numPages; pi++) {
+        pageCount++;
+        progressCb && progressCb(pageCount / totalPages, `Page ${pageCount}/${totalPages}…`);
+        const page = await doc.getPage(pi);
+        const vp1 = page.getViewport({ scale: 1 });
+        const w_mm = (vp1.width / 72) * 25.4;
+        const h_mm = (vp1.height / 72) * 25.4;
+        const vp = page.getViewport({ scale: 2 });
+        const canvas = document.createElement("canvas");
+        canvas.width = vp.width; canvas.height = vp.height;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        const orient = w_mm > h_mm ? "l" : "p";
+        if (!pdf) pdf = new jsPDF({ unit: "mm", format: [w_mm, h_mm], orientation: orient });
+        else pdf.addPage([w_mm, h_mm], orient);
+        pdf.addImage(canvas.toDataURL("image/jpeg", quality), "JPEG", 0, 0, w_mm, h_mm);
+      }
+    }
+    return pdf;
+  }
+})();
+
+/* ============================================================
+   14. PDF COMPRESSOR — with preset levels + target size
+   ============================================================ */
+(function () {
+  let _file = null;
+
+  const levelSelect   = document.getElementById("pdfcompress-level");
+  const scaleSelect   = document.getElementById("pdfcompress-scale");
+  const targetEnable  = document.getElementById("pdfcompress-targetsize-enable");
+  const targetWrap    = document.getElementById("pdfcompress-targetsize-wrap");
+  const targetKbInput = document.getElementById("pdfcompress-targetkb");
+  const targetUnit    = document.getElementById("pdfcompress-targetunit");
+  const infoEl        = document.getElementById("pdfcompress-info");
+  const progressWrap  = document.getElementById("pdfcompress-progress");
+  const btn           = document.getElementById("btn-pdfcompress");
+
+  // Compression level → JPEG quality map
+  const LEVEL_QUALITY = { screen: 0.45, ebook: 0.70, printer: 0.88, prepress: 0.95 };
+
+  targetEnable?.addEventListener("change", () => {
+    targetWrap.style.display = targetEnable.checked ? "" : "none";
+  });
+
+  setupDropZone("dz-pdfcompress", "file-pdfcompress", (file) => {
+    if (!file || file.type !== "application/pdf") { showToast("Please select a PDF file.", "error"); return; }
+    _file = file;
+    markDropZone("dz-pdfcompress", file.name);
+    infoEl.textContent = `Original: ${file.name} · ${formatBytes(file.size)}`;
+    infoEl.hidden = false;
+    btn.disabled = false;
+  });
+
+  btn?.addEventListener("click", async () => {
+    if (!_file || typeof pdfjsLib === "undefined" || typeof jspdf === "undefined") {
+      showToast("Required libraries not loaded.", "error"); return;
+    }
+    try {
+      btn.disabled = true; btn.textContent = "Compressing…";
+      progressWrap.hidden = false;
+
+      const renderScale = parseFloat(scaleSelect?.value || "1.0");
+      const ab = await _file.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data: ab }).promise;
+      const total = pdfDoc.numPages;
+
+      // Get page dimensions from first page for consistent output
+      const firstPage = await pdfDoc.getPage(1);
+      const vp1 = firstPage.getViewport({ scale: 1 });
+      const w_mm = (vp1.width / 72) * 25.4;
+      const h_mm = (vp1.height / 72) * 25.4;
+
+      let pdf;
+
+      if (targetEnable?.checked && targetKbInput.value) {
+        const unit = targetUnit?.value || "kb";
+        const targetBytes = parseFloat(targetKbInput.value) * (unit === "mb" ? 1048576 : 1024);
+        setProgress("pdfcompress-fill", "pdfcompress-status", 5, "Starting binary search…");
+        pdf = await findQualityForSizeGeneric(pdfDoc, renderScale, targetBytes,
+          (msg) => setProgress("pdfcompress-fill", "pdfcompress-status", 50, msg));
+      } else {
+        const quality = LEVEL_QUALITY[levelSelect?.value || "ebook"];
+        pdf = await compressPdfPages(pdfDoc, renderScale, quality,
+          (pct, msg) => setProgress("pdfcompress-fill", "pdfcompress-status", pct, msg));
+      }
+
+      const blob = pdf.output("blob");
+      const savedBytes = _file.size - blob.size;
+      const savedPct = Math.round((savedBytes / _file.size) * 100);
+      setProgress("pdfcompress-fill", "pdfcompress-status", 100,
+        `Done · ${formatBytes(_file.size)} → ${formatBytes(blob.size)} (${savedPct > 0 ? "−" : "+"}${Math.abs(savedPct)}%)`);
+      triggerDownload(URL.createObjectURL(blob), `${basename(_file.name)}_compressed.pdf`);
+      showToast(`✅ ${formatBytes(_file.size)} → ${formatBytes(blob.size)} · Saved ${savedPct > 0 ? savedPct : 0}%`, "success");
+    } catch(e) {
+      showToast("Compression failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Compress PDF & Download";
+      setTimeout(() => { progressWrap.hidden = true; }, 3000);
+    }
+  });
+
+  async function compressPdfPages(pdfDoc, renderScale, quality, progressCb) {
+    const { jsPDF } = jspdf;
+    const total = pdfDoc.numPages;
+    let pdf = null;
+    for (let i = 1; i <= total; i++) {
+      progressCb && progressCb(Math.round((i/total)*90), `Page ${i}/${total}…`);
+      const page = await pdfDoc.getPage(i);
+      const vp1 = page.getViewport({ scale: 1 });
+      const w_mm = (vp1.width / 72) * 25.4;
+      const h_mm = (vp1.height / 72) * 25.4;
+      const vp = page.getViewport({ scale: renderScale });
+      const canvas = document.createElement("canvas");
+      canvas.width = vp.width; canvas.height = vp.height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      const orient = w_mm > h_mm ? "l" : "p";
+      if (!pdf) pdf = new jsPDF({ unit: "mm", format: [w_mm, h_mm], orientation: orient });
+      else pdf.addPage([w_mm, h_mm], orient);
+      pdf.addImage(canvas.toDataURL("image/jpeg", quality), "JPEG", 0, 0, w_mm, h_mm);
+    }
+    return pdf;
+  }
+
+  async function findQualityForSizeGeneric(pdfDoc, renderScale, targetBytes, statusCb) {
+    let lo = 0.05, hi = 0.95, bestPdf = null, bestDiff = Infinity;
+    for (let iter = 0; iter < 9; iter++) {
+      const mid = (lo + hi) / 2;
+      statusCb && statusCb(`Pass ${iter+1}/9 — quality ${Math.round(mid*100)}%…`);
+      const pdf = await compressPdfPages(pdfDoc, renderScale, mid, null);
+      const blob = pdf.output("blob");
+      const diff = Math.abs(blob.size - targetBytes);
+      if (diff < bestDiff) { bestDiff = diff; bestPdf = pdf; }
+      if (blob.size > targetBytes) hi = mid; else lo = mid;
+      if (diff / targetBytes < 0.08) break;
+    }
+    return bestPdf;
+  }
+})();
+
+/* ============================================================
+   15. DOCX → PDF (mammoth.js parse → jsPDF)
+   ============================================================ */
+(function () {
+  let _file = null;
+
+  const infoEl       = document.getElementById("docx2pdf-info");
+  const progressWrap = document.getElementById("docx2pdf-progress");
+  const btn          = document.getElementById("btn-docx2pdf");
+  const pageSelect   = document.getElementById("docx2pdf-page");
+  const fontSizeInp  = document.getElementById("docx2pdf-fontsize");
+
+  const PAGE_MM = { a4: [210,297], letter: [215.9,279.4], a3: [297,420] };
+
+  setupDropZone("dz-docx2pdf", "file-docx2pdf", (file) => {
+    const ok = file && (file.name.endsWith(".docx") ||
+      file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    if (!ok) { showToast("Please select a .docx file.", "error"); return; }
+    _file = file;
+    markDropZone("dz-docx2pdf", file.name);
+    infoEl.textContent = `Selected: ${file.name} · ${formatBytes(file.size)}`;
+    infoEl.hidden = false;
+    btn.disabled = false;
+  });
+
+  btn?.addEventListener("click", async () => {
+    if (!_file) return;
+    if (typeof mammoth === "undefined") {
+      showToast("Mammoth.js not loaded. Check your connection.", "error"); return;
+    }
+    if (typeof jspdf === "undefined") {
+      showToast("jsPDF not loaded. Check your connection.", "error"); return;
+    }
+    try {
+      btn.disabled = true; btn.textContent = "Converting…";
+      progressWrap.hidden = false;
+      setProgress("docx2pdf-fill", "docx2pdf-status", 10, "Reading DOCX…");
+
+      const ab = await _file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer: ab });
+      const text = result.value;
+
+      setProgress("docx2pdf-fill", "docx2pdf-status", 50, "Building PDF…");
+
+      const { jsPDF } = jspdf;
+      const pageKey = pageSelect?.value || "a4";
+      const [pw, ph] = PAGE_MM[pageKey] || PAGE_MM.a4;
+      const fontSize = parseInt(fontSizeInp?.value) || 11;
+      const margin = 20;
+      const usable = pw - margin * 2;
+
+      const pdf = new jsPDF({ unit: "mm", format: [pw, ph], orientation: pw > ph ? "l" : "p" });
+      pdf.setFontSize(fontSize);
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(20, 20, 20);
+
+      const lineH = fontSize * 0.38 + 1.2;
+      let y = margin;
+      const lines = pdf.splitTextToSize(text, usable);
+
+      // Try to detect headings (all-caps short lines or lines ending with nothing after)
+      lines.forEach((line) => {
+        if (y + lineH > ph - margin) { pdf.addPage([pw, ph]); y = margin; }
+        const trimmed = line.trim();
+        // Heuristic heading detection: short, ends without punctuation, mostly letters
+        const isHeading = trimmed.length > 0 && trimmed.length < 60 &&
+          !/[.!?,:;]$/.test(trimmed) && /^[A-Z\d]/.test(trimmed) &&
+          trimmed === trimmed.toUpperCase() && trimmed.length > 3;
+        if (isHeading) {
+          pdf.setFontSize(fontSize + 3);
+          pdf.setFont("helvetica", "bold");
+          pdf.text(trimmed, margin, y);
+          pdf.setFontSize(fontSize);
+          pdf.setFont("helvetica", "normal");
+          y += lineH * 1.6;
+        } else {
+          pdf.text(line, margin, y);
+          y += lineH;
+        }
+      });
+
+      setProgress("docx2pdf-fill", "docx2pdf-status", 100, "Done!");
+      pdf.save(`${basename(_file.name)}.pdf`);
+      showToast("✅ DOCX converted to PDF & downloaded!", "success");
+    } catch(e) {
+      showToast("Conversion failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Convert to PDF & Download";
+      setTimeout(() => { progressWrap.hidden = true; }, 2000);
+    }
+  });
+})();
+
+/* ============================================================
+   16. PDF → DOCX (PDF.js text extraction → .docx via raw XML)
+   ============================================================ */
+(function () {
+  let _file = null;
+
+  const infoEl       = document.getElementById("pdf2docx-info");
+  const progressWrap = document.getElementById("pdf2docx-progress");
+  const btn          = document.getElementById("btn-pdf2docx");
+  const fontSelect   = document.getElementById("pdf2docx-font");
+  const fontSizeInp  = document.getElementById("pdf2docx-fontsize");
+
+  setupDropZone("dz-pdf2docx", "file-pdf2docx", (file) => {
+    if (!file || file.type !== "application/pdf") { showToast("Please select a PDF file.", "error"); return; }
+    _file = file;
+    markDropZone("dz-pdf2docx", file.name);
+    infoEl.textContent = `Selected: ${file.name} · ${formatBytes(file.size)}`;
+    infoEl.hidden = false;
+    btn.disabled = false;
+  });
+
+  btn?.addEventListener("click", async () => {
+    if (!_file || typeof pdfjsLib === "undefined") {
+      showToast("PDF.js not loaded.", "error"); return;
+    }
+    try {
+      btn.disabled = true; btn.textContent = "Extracting…";
+      progressWrap.hidden = false;
+
+      const font = fontSelect?.value || "Arial";
+      const fontSize = parseInt(fontSizeInp?.value) || 11;
+      const halfPt = fontSize * 2; // OOXML half-points
+
+      const ab = await _file.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data: ab }).promise;
+      const total = pdfDoc.numPages;
+
+      let allParas = [];
+      for (let i = 1; i <= total; i++) {
+        setProgress("pdf2docx-fill", "pdf2docx-status",
+          Math.round((i / total) * 85), `Extracting page ${i}/${total}…`);
+        const page = await pdfDoc.getPage(i);
+        const content = await page.getTextContent();
+
+        // Group items into lines by y-position
+        const lines = {};
+        content.items.forEach(item => {
+          const y = Math.round(item.transform[5]);
+          if (!lines[y]) lines[y] = [];
+          lines[y].push(item.str);
+        });
+
+        const sortedY = Object.keys(lines).map(Number).sort((a,b) => b - a);
+        sortedY.forEach(y => {
+          const lineText = lines[y].join(" ").trim();
+          if (lineText) allParas.push({ text: lineText, isPageBreak: false });
+        });
+
+        if (i < total) allParas.push({ text: "", isPageBreak: true });
+      }
+
+      setProgress("pdf2docx-fill", "pdf2docx-status", 90, "Building DOCX…");
+
+      // Build minimal OOXML DOCX in memory (ZIP)
+      const docxBlob = await buildDocx(allParas, font, halfPt);
+      setProgress("pdf2docx-fill", "pdf2docx-status", 100, "Done!");
+      triggerDownload(URL.createObjectURL(docxBlob), `${basename(_file.name)}.docx`);
+      showToast("✅ PDF converted to DOCX & downloaded!", "success");
+    } catch(e) {
+      showToast("Conversion failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Convert to DOCX & Download";
+      setTimeout(() => { progressWrap.hidden = true; }, 2000);
+    }
+  });
+
+  function xmlEscape(str) {
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+              .replace(/"/g,"&quot;").replace(/'/g,"&apos;");
+  }
+
+  function buildDocx(paras, font, halfPt) {
+    // Build document.xml
+    const parasXml = paras.map(p => {
+      if (p.isPageBreak) {
+        return `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+      }
+      const text = xmlEscape(p.text);
+      // Heuristic: short, no punctuation at end → bold heading
+      const isHeading = p.text.length < 80 && p.text.length > 2 &&
+        !/[.,:;!?]$/.test(p.text.trim()) && p.text === p.text.toUpperCase() && p.text.trim().length > 3;
+      const sz = isHeading ? halfPt + 8 : halfPt;
+      const bold = isHeading ? "<w:b/>" : "";
+      return `<w:p>
+  <w:pPr><w:spacing w:after="120"/></w:pPr>
+  <w:r><w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}"/><w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/>${bold}</w:rPr>
+    <w:t xml:space="preserve">${text}</w:t></w:r>
+</w:p>`;
+    }).join("
+");
+
+    const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:body>
+${parasXml}
+<w:sectPr>
+  <w:pgSz w:w="12240" w:h="15840"/>
+  <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/>
+</w:sectPr>
+</w:body>
+</w:document>`;
+
+    const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`;
+
+    const wordRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+</Relationships>`;
+
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`;
+
+    // Simple ZIP builder (no external library needed)
+    return buildZip([
+      { name: "[Content_Types].xml", data: contentTypes },
+      { name: "_rels/.rels",         data: relsXml },
+      { name: "word/document.xml",   data: docXml },
+      { name: "word/_rels/document.xml.rels", data: wordRelsXml },
+    ]);
+  }
+
+  // Minimal ZIP builder — local file header + central directory
+  function buildZip(files) {
+    const enc = new TextEncoder();
+    const parts = [];
+    const centralDir = [];
+    let offset = 0;
+
+    files.forEach(f => {
+      const nameBytes = enc.encode(f.name);
+      const dataBytes = enc.encode(f.data);
+      const crc = crc32(dataBytes);
+      const localHeader = makeLocalHeader(nameBytes, dataBytes, crc);
+      parts.push(localHeader);
+      parts.push(dataBytes);
+      centralDir.push(makeCentralDir(nameBytes, dataBytes, crc, offset));
+      offset += localHeader.byteLength + dataBytes.byteLength;
+    });
+
+    const cdBytes = concatU8(centralDir);
+    const eocd = makeEOCD(files.length, cdBytes.byteLength, offset);
+    const all = concatU8([...parts.map(p => p instanceof Uint8Array ? p : new Uint8Array(p)), cdBytes, eocd]);
+    return new Blob([all], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  }
+
+  function concatU8(arrays) {
+    const total = arrays.reduce((s,a) => s + a.byteLength, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    arrays.forEach(a => { out.set(new Uint8Array(a.buffer || a), off); off += a.byteLength; });
+    return out;
+  }
+
+  function u16le(v) { const a = new Uint8Array(2); new DataView(a.buffer).setUint16(0,v,true); return a; }
+  function u32le(v) { const a = new Uint8Array(4); new DataView(a.buffer).setUint32(0,v,true); return a; }
+
+  function makeLocalHeader(name, data, crc) {
+    return concatU8([
+      new Uint8Array([0x50,0x4B,0x03,0x04]), // sig
+      u16le(20), u16le(0), u16le(0),         // version, flags, method(stored)
+      u16le(0), u16le(0),                    // mod time, mod date
+      u32le(crc), u32le(data.byteLength), u32le(data.byteLength),
+      u16le(name.byteLength), u16le(0),
+      name,
+    ]);
+  }
+
+  function makeCentralDir(name, data, crc, offset) {
+    return concatU8([
+      new Uint8Array([0x50,0x4B,0x01,0x02]),
+      u16le(20), u16le(20), u16le(0), u16le(0),
+      u16le(0), u16le(0), u16le(0),
+      u32le(crc), u32le(data.byteLength), u32le(data.byteLength),
+      u16le(name.byteLength), u16le(0), u16le(0),
+      u16le(0), u16le(0), u32le(0),
+      u32le(offset),
+      name,
+    ]);
+  }
+
+  function makeEOCD(count, cdSize, cdOffset) {
+    return concatU8([
+      new Uint8Array([0x50,0x4B,0x05,0x06]),
+      u16le(0), u16le(0),
+      u16le(count), u16le(count),
+      u32le(cdSize), u32le(cdOffset),
+      u16le(0),
+    ]);
+  }
+
+  function crc32(data) {
+    let crc = 0xFFFFFFFF;
+    const table = crc32.table || (crc32.table = (() => {
+      const t = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let j = 0; j < 8; j++) c = c & 1 ? 0xEDB88320 ^ (c>>>1) : c>>>1;
+        t[i] = c;
+      }
+      return t;
+    })());
+    for (let i = 0; i < data.length; i++) crc = table[(crc ^ data[i]) & 0xFF] ^ (crc>>>8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
 })();
 
 /* ============================================================
