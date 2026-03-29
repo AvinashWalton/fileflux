@@ -12,6 +12,16 @@ if (typeof pdfjsLib !== "undefined") {
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 }
 
+/* ── Wait for full DOM before attaching any logic ── */
+document.addEventListener("DOMContentLoaded", function () {
+
+  /* ── Re-init PDF.js worker (in case it loaded after this script) ── */
+  if (typeof pdfjsLib !== "undefined") {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+
 /* ============================================================
    UTILITIES
    ============================================================ */
@@ -110,20 +120,43 @@ function markDropZone(dzId, fileName) {
    TABS
    ============================================================ */
 
-document.querySelectorAll(".tab-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach((b) => {
-      b.classList.remove("active");
-      b.setAttribute("aria-selected", "false");
+(function initTabs() {
+  const allTabBtns    = document.querySelectorAll(".tab-btn");
+  const allTabPanels  = document.querySelectorAll(".tab-panel");
+
+  function activateTab(tabBtn) {
+    // Deactivate all
+    allTabBtns.forEach(function(tb) {
+      tb.classList.remove("active");
+      tb.setAttribute("aria-selected", "false");
     });
-    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
-    btn.classList.add("active");
-    btn.setAttribute("aria-selected", "true");
-    const id = "tab-" + btn.dataset.tab;
-    const panel = document.getElementById(id);
-    if (panel) panel.classList.add("active");
+    allTabPanels.forEach(function(tp) {
+      tp.classList.remove("active");
+    });
+    // Activate chosen
+    tabBtn.classList.add("active");
+    tabBtn.setAttribute("aria-selected", "true");
+    var panelId = "tab-" + tabBtn.getAttribute("data-tab");
+    var panel = document.getElementById(panelId);
+    if (panel) {
+      panel.classList.add("active");
+      // Scroll panel into view smoothly on mobile
+      panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }
+
+  allTabBtns.forEach(function(tabBtn) {
+    tabBtn.addEventListener("click", function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      activateTab(tabBtn);
+    });
   });
-});
+
+  // Ensure the initially-active tab panel is visible on load
+  var activeBtn = document.querySelector(".tab-btn.active");
+  if (activeBtn) activateTab(activeBtn);
+})();
 
 /* ============================================================
    HAMBURGER MENU
@@ -1506,8 +1539,7 @@ async function findQualityForSize(pdfDoc, targetWmm, targetHmm, scale, targetByt
   <w:r><w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}"/><w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/>${bold}</w:rPr>
     <w:t xml:space="preserve">${text}</w:t></w:r>
 </w:p>`;
-    }).join("
-");
+    }).join("\n");
 
     const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
@@ -1656,3 +1688,5 @@ ${parasXml}
     obs.observe(el);
   });
 })();
+
+}); /* end DOMContentLoaded */
