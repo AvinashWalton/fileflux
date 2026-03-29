@@ -847,6 +847,42 @@ select:focus {
   .tab-btn { flex-shrink: 0; }
 }
 
+
+/* ============================================================
+   TARGET SIZE ROW (PDF Resizer / Merger / Compressor)
+   ============================================================ */
+.target-size-row {
+  margin: 16px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.targetsize-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: rgba(245,166,35,0.06);
+  border: 1px solid rgba(245,166,35,0.2);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+.targetsize-inputs input[type="number"] {
+  width: 120px;
+  flex-shrink: 0;
+}
+.targetsize-inputs select {
+  width: 80px;
+  flex-shrink: 0;
+}
+.targetsize-hint {
+  font-size: 0.78rem;
+  color: var(--c-muted);
+  flex: 1;
+  min-width: 160px;
+  line-height: 1.5;
+}
+
 /* ============================================================
    PDF MERGE FILE LIST
    ============================================================ */
