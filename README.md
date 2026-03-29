@@ -5,6 +5,7 @@
 [![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub Pages](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blue?logo=github)](https://avinashwalton.github.io/fileflux/)
 [![Made in India](https://img.shields.io/badge/Made%20with%20%E2%9D%A4%EF%B8%8F-India-orange)](https://github.com/AvinashWalton)
+[![Tools](https://img.shields.io/badge/Tools-13-brightgreen)](#-13-conversion-tools)
 [![HTML](https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/HTML)
 [![CSS](https://img.shields.io/badge/CSS3-1572B6?logo=css3&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/CSS)
 [![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
@@ -13,7 +14,7 @@
 
 ## 🌐 Live Demo
 
-👉 **[fileflux.live](https://avinashwalton.github.io/fileflux/)**
+👉 **[avinashwalton.github.io/fileflux](https://avinashwalton.github.io/fileflux/)**
 
 ---
 
@@ -27,21 +28,23 @@
 
 FileFlux is a fully client-side file conversion tool. Everything runs in your browser — your files **never leave your device**.
 
-### 🔄 11 Conversion Tools
+### 🔄 13 Conversion Tools
 
-| Tool | Description |
-|------|-------------|
-| 🖼️ **PNG → JPG** | Convert PNG to JPG with custom quality & background color |
-| 🖼️ **JPG → PNG** | Convert JPG/JPEG to lossless PNG |
-| 📄 **PDF → Image** | Export every PDF page as a high-resolution PNG |
-| 🖼️ **Image → PDF** | Combine multiple images into a single PDF |
-| ✍️ **Text → Image** | Render text on canvas — custom font, color, size |
-| 🔍 **Image → Text** | OCR — extract text from images (multi-language) |
-| 📑 **PDF → Text** | Extract all text content from a PDF |
-| 📝 **Text → PDF** | Generate a PDF from plain text with custom styling |
-| 📐 **Image Resizer** | Resize to exact pixels with aspect-ratio lock |
-| 🗜️ **Image Compressor** | Reduce file size with live compression stats |
-| 🔗 **Merge Images** | Stitch images vertically or horizontally |
+| # | Tool | Description |
+|---|------|-------------|
+| 1 | 🖼️ **PNG → JPG** | Convert PNG to JPG with custom quality & background color for transparency |
+| 2 | 🖼️ **JPG → PNG** | Convert JPG/JPEG to lossless PNG |
+| 3 | 📄 **PDF → Image** | Export every PDF page as a high-resolution PNG (up to 4x scale) |
+| 4 | 🖼️ **Image → PDF** | Combine multiple images into a single PDF document |
+| 5 | ✍️ **Text → Image** | Render text on canvas — custom font, color, size & background |
+| 6 | 🔍 **Image → Text** | OCR — extract text from images (English, Hindi, French, German, Spanish) |
+| 7 | 📑 **PDF → Text** | Extract all text content from a PDF, page by page |
+| 8 | 📝 **Text → PDF** | Generate a formatted PDF from plain text with custom styling |
+| 9 | 📐 **Image Resizer** | Resize to exact pixels with optional aspect-ratio lock, multiple output formats |
+| 10 | 🗜️ **Image Compressor** | Reduce file size with live before/after size stats |
+| 11 | 🔗 **Merge Images** | Stitch images vertically or horizontally with custom gap & color |
+| 12 | 📏 **PDF Resizer** | Resize all pages of a PDF to A4, A3, Letter, Legal or a custom mm size |
+| 13 | 📎 **PDF Merger** | Merge multiple PDFs into one — drag to reorder files before merging |
 
 ### 🛡️ Why FileFlux?
 
@@ -59,10 +62,10 @@ FileFlux is a fully client-side file conversion tool. Everything runs in your br
 
 | Library | Purpose |
 |---------|---------|
-| [PDF.js](https://mozilla.github.io/pdf.js/) | PDF rendering & text extraction |
-| [jsPDF](https://github.com/parallax/jsPDF) | PDF generation from images/text |
-| [Tesseract.js](https://tesseract.projectnaptha.com/) | In-browser OCR (image to text) |
-| Vanilla HTML/CSS/JS | No framework needed — pure web |
+| [PDF.js](https://mozilla.github.io/pdf.js/) | PDF rendering, page export & text extraction |
+| [jsPDF](https://github.com/parallax/jsPDF) | PDF generation — from images, text, resizing & merging |
+| [Tesseract.js](https://tesseract.projectnaptha.com/) | In-browser OCR (image to text, multi-language) |
+| Vanilla HTML/CSS/JS | No framework — pure web, zero build step |
 
 ---
 
@@ -80,7 +83,7 @@ git clone https://github.com/AvinashWalton/fileflux.git
 # Enter the folder
 cd fileflux
 
-# Open in browser (just open index.html — no build step needed!)
+# Open in browser (no build step needed!)
 open index.html
 # or: double-click index.html in your file explorer
 ```
@@ -92,7 +95,7 @@ That's it. No `npm install`, no build process, no dependencies to manage.
 1. Fork this repo
 2. Go to **Settings → Pages**
 3. Set source to `main` branch, root folder `/`
-4. Your live URL: `https://avinashwalton.github.io/fileflux/`
+4. Your live URL: `https://yourusername.github.io/fileflux/`
 
 ---
 
@@ -102,7 +105,7 @@ That's it. No `npm install`, no build process, no dependencies to manage.
 fileflux/
 ├── index.html      # Main HTML — all UI, SEO meta tags, structured data
 ├── style.css       # All styling — responsive, dark theme, animations
-├── script.js       # All converter logic — pure vanilla JavaScript
+├── script.js       # All 13 converter tools — pure vanilla JavaScript
 ├── LICENSE         # MIT License
 └── README.md       # You are here
 ```
@@ -126,6 +129,7 @@ Contributions are welcome! Here's how:
 - Image color picker / palette extractor
 - Batch file processing
 - Dark/light mode toggle
+- PDF page splitter (extract specific pages)
 - i18n / Hindi language support
 
 ---
