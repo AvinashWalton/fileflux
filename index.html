@@ -94,12 +94,12 @@
     <div class="container hero-content">
       <div class="hero-badge">🔒 100% In-Browser · No Upload · No Signup</div>
       <h1 id="hero-heading">Convert Files <span class="accent">Instantly.</span><br/>No Server. No Cost.</h1>
-      <p class="hero-sub">PNG ↔ JPG · PDF ↔ Image · Text ↔ Image · PDF ↔ Text · Resize · Compress · Merge — all in your browser.</p>
+      <p class="hero-sub">PNG ↔ JPG · PDF ↔ Image · Text ↔ Image · PDF ↔ Text · Resize · Compress · Merge · PDF Resize · PDF Merge — all in your browser.</p>
       <a href="#converters" class="btn-primary">Start Converting ↓</a>
     </div>
     <div class="hero-ticker" aria-hidden="true">
       <div class="ticker-track">
-        <span>PNG→JPG</span><span>JPG→PNG</span><span>PDF→Image</span><span>Image→PDF</span><span>Text→Image</span><span>Image→Text</span><span>PDF→Text</span><span>Text→PDF</span><span>Image Resize</span><span>Image Compress</span><span>Merge Images</span><span>PNG→JPG</span><span>JPG→PNG</span><span>PDF→Image</span><span>Image→PDF</span><span>Text→Image</span><span>Image→Text</span><span>PDF→Text</span><span>Text→PDF</span><span>Image Resize</span><span>Image Compress</span><span>Merge Images</span>
+        <span>PNG→JPG</span><span>JPG→PNG</span><span>PDF→Image</span><span>Image→PDF</span><span>Text→Image</span><span>Image→Text</span><span>PDF→Text</span><span>Text→PDF</span><span>Image Resize</span><span>Image Compress</span><span>Merge Images</span><span>PDF Resizer</span><span>PDF Merger</span><span>PNG→JPG</span><span>JPG→PNG</span><span>PDF→Image</span><span>Image→PDF</span><span>Text→Image</span><span>Image→Text</span><span>PDF→Text</span><span>Text→PDF</span><span>Image Resize</span><span>Image Compress</span><span>Merge Images</span><span>PDF Resizer</span><span>PDF Merger</span>
       </div>
     </div>
   </section>
@@ -122,6 +122,8 @@
         <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-resize"   data-tab="resize">Resize Image</button>
         <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-compress" data-tab="compress">Compress Image</button>
         <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-merge"    data-tab="merge">Merge Images</button>
+        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pdfresize" data-tab="pdfresize">PDF Resizer</button>
+        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pdfmerge"  data-tab="pdfmerge">PDF Merger</button>
       </div>
 
       <!-- ---- PNG to JPG ---- -->
@@ -446,6 +448,77 @@
           </div>
           <div class="preview-area" id="prev-merge"></div>
           <button class="btn-convert" id="btn-merge" disabled>Merge & Download PNG</button>
+        </div>
+      </div>
+
+      <!-- ---- PDF Resizer ---- -->
+      <div class="tab-panel" id="tab-pdfresize" role="tabpanel">
+        <div class="panel-card">
+          <h3>PDF Resizer</h3>
+          <p class="panel-desc">Change the page size of every page in a PDF — scale to A4, A3, Letter, Legal, or a custom size.</p>
+          <label class="drop-zone" id="dz-pdfresize" for="file-pdfresize">
+            <div class="dz-inner">
+              <div class="dz-icon">📏</div>
+              <div class="dz-text">Drop PDF file here or <span>browse</span></div>
+              <div class="dz-hint">Supports: .pdf</div>
+            </div>
+            <input type="file" id="file-pdfresize" accept=".pdf,application/pdf" hidden />
+          </label>
+          <div class="options-grid">
+            <label>Target Page Size
+              <select id="pdfresize-size">
+                <option value="a4">A4 (210 × 297 mm)</option>
+                <option value="a3">A3 (297 × 420 mm)</option>
+                <option value="letter">Letter (216 × 279 mm)</option>
+                <option value="legal">Legal (216 × 356 mm)</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label>Orientation
+              <select id="pdfresize-orient">
+                <option value="portrait">Portrait</option>
+                <option value="landscape">Landscape</option>
+              </select>
+            </label>
+            <label id="custom-w-wrap" style="display:none">Custom Width (mm)
+              <input type="number" id="pdfresize-cw" value="210" min="10" max="2000" />
+            </label>
+            <label id="custom-h-wrap" style="display:none">Custom Height (mm)
+              <input type="number" id="pdfresize-ch" value="297" min="10" max="2000" />
+            </label>
+            <label class="checkbox-label" style="align-self:end">
+              <input type="checkbox" id="pdfresize-fitcontent" checked /> Fit content to new size
+            </label>
+          </div>
+          <div id="pdfresize-info" class="info-badge" hidden></div>
+          <div id="pdfresize-progress" class="progress-wrap" hidden>
+            <div class="progress-bar"><div class="progress-fill" id="pdfresize-fill"></div></div>
+            <span id="pdfresize-status"></span>
+          </div>
+          <button class="btn-convert" id="btn-pdfresize" disabled>Resize PDF &amp; Download</button>
+        </div>
+      </div>
+
+      <!-- ---- PDF Merger ---- -->
+      <div class="tab-panel" id="tab-pdfmerge" role="tabpanel">
+        <div class="panel-card">
+          <h3>PDF Merger</h3>
+          <p class="panel-desc">Combine multiple PDF files into one single PDF. Drag to reorder pages before merging.</p>
+          <label class="drop-zone" id="dz-pdfmerge" for="file-pdfmerge">
+            <div class="dz-inner">
+              <div class="dz-icon">📎</div>
+              <div class="dz-text">Drop PDF files here or <span>browse</span></div>
+              <div class="dz-hint">Supports: .pdf (select multiple files)</div>
+            </div>
+            <input type="file" id="file-pdfmerge" accept=".pdf,application/pdf" multiple hidden />
+          </label>
+          <div id="pdfmerge-list" class="merge-file-list" hidden></div>
+          <div id="pdfmerge-info" class="info-badge" hidden></div>
+          <div id="pdfmerge-progress" class="progress-wrap" hidden>
+            <div class="progress-bar"><div class="progress-fill" id="pdfmerge-fill"></div></div>
+            <span id="pdfmerge-status"></span>
+          </div>
+          <button class="btn-convert" id="btn-pdfmerge" disabled>Merge PDFs &amp; Download</button>
         </div>
       </div>
 
