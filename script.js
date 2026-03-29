@@ -880,6 +880,288 @@ document.addEventListener("dragover", (e) => e.preventDefault());
 document.addEventListener("drop", (e) => e.preventDefault());
 
 /* ============================================================
+   12. PDF RESIZER (PDF.js render → jsPDF)
+   ============================================================ */
+(function () {
+  let _file = null;
+
+  // Page size presets in mm [width, height] — portrait
+  const PAGE_SIZES = {
+    a4:     [210, 297],
+    a3:     [297, 420],
+    letter: [215.9, 279.4],
+    legal:  [215.9, 355.6],
+  };
+
+  const sizeSelect   = document.getElementById("pdfresize-size");
+  const orientSelect = document.getElementById("pdfresize-orient");
+  const cwInput      = document.getElementById("pdfresize-cw");
+  const chInput      = document.getElementById("pdfresize-ch");
+  const cwWrap       = document.getElementById("custom-w-wrap");
+  const chWrap       = document.getElementById("custom-h-wrap");
+  const fitCB        = document.getElementById("pdfresize-fitcontent");
+  const infoEl       = document.getElementById("pdfresize-info");
+  const progressWrap = document.getElementById("pdfresize-progress");
+  const btn          = document.getElementById("btn-pdfresize");
+
+  // Show/hide custom fields
+  sizeSelect?.addEventListener("change", () => {
+    const isCustom = sizeSelect.value === "custom";
+    cwWrap.style.display = isCustom ? "" : "none";
+    chWrap.style.display = isCustom ? "" : "none";
+  });
+
+  setupDropZone("dz-pdfresize", "file-pdfresize", (file) => {
+    if (!file || file.type !== "application/pdf") {
+      showToast("Please select a PDF file.", "error"); return;
+    }
+    _file = file;
+    markDropZone("dz-pdfresize", file.name);
+    infoEl.textContent = `Selected: ${file.name} · ${formatBytes(file.size)}`;
+    infoEl.hidden = false;
+    btn.disabled = false;
+  });
+
+  btn?.addEventListener("click", async () => {
+    if (!_file || typeof pdfjsLib === "undefined" || typeof jspdf === "undefined") {
+      showToast("Required libraries not loaded. Check your connection.", "error"); return;
+    }
+
+    try {
+      btn.disabled = true;
+      btn.textContent = "Resizing…";
+      progressWrap.hidden = false;
+
+      // Determine target size in mm
+      const sizeKey = sizeSelect?.value || "a4";
+      let [targetW_mm, targetH_mm] = sizeKey === "custom"
+        ? [parseFloat(cwInput.value) || 210, parseFloat(chInput.value) || 297]
+        : PAGE_SIZES[sizeKey];
+
+      // Apply orientation
+      if (orientSelect?.value === "landscape" && targetW_mm < targetH_mm) {
+        [targetW_mm, targetH_mm] = [targetH_mm, targetW_mm];
+      }
+
+      // mm → px at 96dpi  (1mm = 3.7795px)
+      const MM_TO_PX = 3.7795275591;
+      const targetW_px = targetW_mm * MM_TO_PX;
+      const targetH_px = targetH_mm * MM_TO_PX;
+
+      const { jsPDF } = jspdf;
+      const pdf = new jsPDF({
+        unit: "mm",
+        format: [targetW_mm, targetH_mm],
+        orientation: targetW_mm > targetH_mm ? "l" : "p",
+      });
+
+      const arrayBuffer = await _file.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const total = pdfDoc.numPages;
+
+      for (let i = 1; i <= total; i++) {
+        setProgress("pdfresize-fill", "pdfresize-status",
+          Math.round((i / total) * 100), `Processing page ${i}/${total}…`);
+
+        const page = await pdfDoc.getPage(i);
+        const origVP = page.getViewport({ scale: 1 });
+
+        // Scale to fit target size
+        const scaleX = targetW_px / origVP.width;
+        const scaleY = targetH_px / origVP.height;
+        const scale  = fitCB?.checked ? Math.min(scaleX, scaleY) : 1;
+
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width  = Math.round(fitCB?.checked ? targetW_px : viewport.width);
+        canvas.height = Math.round(fitCB?.checked ? targetH_px : viewport.height);
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Center content on page
+        const offsetX = fitCB?.checked ? (canvas.width  - viewport.width)  / 2 : 0;
+        const offsetY = fitCB?.checked ? (canvas.height - viewport.height) / 2 : 0;
+        await page.render({
+          canvasContext: ctx,
+          viewport,
+          transform: [1, 0, 0, 1, offsetX, offsetY],
+        }).promise;
+
+        const imgData = canvas.toDataURL("image/jpeg", 0.92);
+        if (i > 1) pdf.addPage([targetW_mm, targetH_mm],
+          targetW_mm > targetH_mm ? "l" : "p");
+        pdf.addImage(imgData, "JPEG", 0, 0, targetW_mm, targetH_mm);
+      }
+
+      pdf.save(`${basename(_file.name)}_resized.pdf`);
+      showToast(`✅ PDF resized to ${targetW_mm}×${targetH_mm}mm & downloaded!`, "success");
+    } catch (e) {
+      showToast("PDF resize failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Resize PDF & Download";
+      progressWrap.hidden = true;
+    }
+  });
+})();
+
+/* ============================================================
+   13. PDF MERGER (PDF.js render → jsPDF)
+   ============================================================ */
+(function () {
+  let _files = []; // ordered array of File objects
+
+  const listEl       = document.getElementById("pdfmerge-list");
+  const infoEl       = document.getElementById("pdfmerge-info");
+  const progressWrap = document.getElementById("pdfmerge-progress");
+  const btn          = document.getElementById("btn-pdfmerge");
+
+  /* ── Render file list with drag-to-reorder ── */
+  function renderList() {
+    listEl.innerHTML = "";
+    if (!_files.length) { listEl.hidden = true; infoEl.hidden = true; return; }
+
+    listEl.hidden = false;
+    infoEl.textContent = `${_files.length} file(s) · ${formatBytes(_files.reduce((s, f) => s + f.size, 0))} total`;
+    infoEl.hidden = false;
+
+    const hint = document.createElement("p");
+    hint.className = "merge-list-hint";
+    hint.textContent = "☰ Drag rows to reorder · ✕ to remove";
+    listEl.appendChild(hint);
+
+    _files.forEach((file, idx) => {
+      const item = document.createElement("div");
+      item.className = "merge-file-item";
+      item.draggable = true;
+      item.dataset.idx = idx;
+
+      item.innerHTML = `
+        <span class="merge-file-drag-handle">☰</span>
+        <span class="merge-file-name" title="${file.name}">📄 ${file.name}</span>
+        <span class="merge-file-size">${formatBytes(file.size)}</span>
+        <button class="merge-file-remove" title="Remove" data-idx="${idx}">✕</button>
+      `;
+
+      // Remove button
+      item.querySelector(".merge-file-remove").addEventListener("click", (e) => {
+        e.stopPropagation();
+        _files.splice(parseInt(e.target.dataset.idx), 1);
+        renderList();
+        btn.disabled = _files.length < 2;
+      });
+
+      // Drag events
+      let dragSrcIdx = null;
+      item.addEventListener("dragstart", (e) => {
+        dragSrcIdx = idx;
+        item.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+      });
+      item.addEventListener("dragend", () => item.classList.remove("dragging"));
+      item.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        item.classList.add("drag-over");
+      });
+      item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
+      item.addEventListener("drop", (e) => {
+        e.preventDefault();
+        item.classList.remove("drag-over");
+        const fromIdx = dragSrcIdx;
+        const toIdx   = idx;
+        if (fromIdx === null || fromIdx === toIdx) return;
+        const moved = _files.splice(fromIdx, 1)[0];
+        _files.splice(toIdx, 0, moved);
+        renderList();
+      });
+
+      listEl.appendChild(item);
+    });
+  }
+
+  /* ── Drop zone / file input ── */
+  setupDropZone("dz-pdfmerge", "file-pdfmerge", (files) => {
+    const pdfs = files.filter((f) => f.type === "application/pdf");
+    if (!pdfs.length) { showToast("Please select PDF files only.", "error"); return; }
+    _files = [..._files, ...pdfs]; // allow adding more files
+    renderList();
+    btn.disabled = _files.length < 2;
+    markDropZone("dz-pdfmerge", `${_files.length} PDF(s) selected`);
+  }, { multiple: true });
+
+  /* ── Merge logic ── */
+  btn?.addEventListener("click", async () => {
+    if (_files.length < 2 || typeof pdfjsLib === "undefined" || typeof jspdf === "undefined") {
+      showToast("Need at least 2 PDFs and libraries loaded.", "error"); return;
+    }
+
+    try {
+      btn.disabled = true;
+      btn.textContent = "Merging…";
+      progressWrap.hidden = false;
+
+      const { jsPDF } = jspdf;
+      let pdf = null;
+      let globalPageCount = 0;
+
+      for (let fi = 0; fi < _files.length; fi++) {
+        setProgress("pdfmerge-fill", "pdfmerge-status",
+          Math.round((fi / _files.length) * 100),
+          `Processing file ${fi + 1}/${_files.length}: ${_files[fi].name}`);
+
+        const arrayBuffer = await _files[fi].arrayBuffer();
+        const srcDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const numPages = srcDoc.numPages;
+
+        for (let pi = 1; pi <= numPages; pi++) {
+          setProgress("pdfmerge-fill", "pdfmerge-status",
+            Math.round(((fi + pi / numPages) / _files.length) * 100),
+            `File ${fi + 1}/${_files.length} — page ${pi}/${numPages}`);
+
+          const page = await srcDoc.getPage(pi);
+          const viewport = page.getViewport({ scale: 2 }); // scale 2x for quality
+
+          const canvas = document.createElement("canvas");
+          canvas.width  = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+
+          // Page dimensions in mm (72dpi PDF units → mm)
+          const origVP1 = page.getViewport({ scale: 1 });
+          const w_mm = (origVP1.width  / 72) * 25.4;
+          const h_mm = (origVP1.height / 72) * 25.4;
+          const orientation = w_mm > h_mm ? "l" : "p";
+
+          if (globalPageCount === 0) {
+            pdf = new jsPDF({ unit: "mm", format: [w_mm, h_mm], orientation });
+          } else {
+            pdf.addPage([w_mm, h_mm], orientation);
+          }
+
+          const imgData = canvas.toDataURL("image/jpeg", 0.88);
+          pdf.addImage(imgData, "JPEG", 0, 0, w_mm, h_mm);
+          globalPageCount++;
+        }
+      }
+
+      setProgress("pdfmerge-fill", "pdfmerge-status", 100, "Finalizing…");
+      pdf.save("merged.pdf");
+      showToast(`✅ ${globalPageCount} pages from ${_files.length} PDFs merged & downloaded!`, "success");
+    } catch (e) {
+      showToast("PDF merge failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Merge PDFs & Download";
+      progressWrap.hidden = true;
+    }
+  });
+})();
+
+/* ============================================================
    SCROLL REVEAL (lightweight)
    ============================================================ */
 (function () {
