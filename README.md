@@ -5,7 +5,7 @@
 [![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub Pages](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blue?logo=github)](https://avinashwalton.github.io/fileflux/)
 [![Made in India](https://img.shields.io/badge/Made%20with%20%E2%9D%A4%EF%B8%8F-India-orange)](https://github.com/AvinashWalton)
-[![Tools](https://img.shields.io/badge/Tools-17-brightgreen)](#-17-conversion-tools)
+[![Tools](https://img.shields.io/badge/Tools-16-brightgreen)](#-16-conversion-tools)
 [![HTML](https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/HTML)
 [![CSS](https://img.shields.io/badge/CSS3-1572B6?logo=css3&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/CSS)
 [![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
@@ -28,11 +28,11 @@
 
 FileFlux is a fully client-side file conversion tool. Everything runs in your browser — your files **never leave your device**.
 
-### 🔄 17 Conversion Tools
+### 🔄 16 Conversion Tools
 
 | # | Tool | Description |
 |---|------|-------------|
-| 1 | 🖼️ **PNG → JPG** | Convert PNG to JPG with custom quality & background color for transparency |
+| 1 | 🖼️ **PNG → JPG** | Convert PNG to JPG with custom quality & background color |
 | 2 | 🖼️ **JPG → PNG** | Convert JPG/JPEG to lossless PNG |
 | 3 | 📄 **PDF → Image** | Export every PDF page as a high-resolution PNG (up to 4x scale) |
 | 4 | 🖼️ **Image → PDF** | Combine multiple images into a single PDF document |
@@ -40,16 +40,22 @@ FileFlux is a fully client-side file conversion tool. Everything runs in your br
 | 6 | 🔍 **Image → Text** | OCR — extract text from images (English, Hindi, French, German, Spanish) |
 | 7 | 📑 **PDF → Text** | Extract all text content from a PDF, page by page |
 | 8 | 📝 **Text → PDF** | Generate a formatted PDF from plain text with custom styling |
-| 9 | 📐 **Image Resizer** | Resize to exact pixels with optional aspect-ratio lock, multiple output formats |
+| 9 | 📐 **Image Resizer** | Resize to exact pixels with aspect-ratio lock, multiple output formats |
 | 10 | 🗜️ **Image Compressor** | Reduce image file size with live before/after stats |
 | 11 | 🔗 **Merge Images** | Stitch images vertically or horizontally with custom gap & color |
-| 12 | 📏 **PDF Resizer** | Resize all PDF pages to A4, A3, Letter, Legal or custom mm — optionally set a **target KB/MB** output size |
-| 13 | 📎 **PDF Merger** | Merge multiple PDFs into one — drag to reorder, optional **target file size** control |
-| 14 | 🗜️ **PDF Compressor** | Compress PDF with preset levels (Screen/eBook/Printer/Prepress) or set an **exact target KB/MB** via binary-search quality optimization |
-| 15 | 📝 **DOCX → PDF** | Convert Word documents to PDF — headings, paragraphs, lists preserved |
-| 16 | 📄 **PDF → DOCX** | Extract text from PDF and save as a structured Word (.docx) file |
+| 12 | 📏 **PDF Resizer** | Change page **dimensions** (A4, A3, A5, B5, Letter, Legal, Custom mm). Content scales to fit. Use this for printing on a specific paper size — not for reducing file storage size. |
+| 13 | 📎 **PDF Merger** | Merge multiple PDFs into one — drag to reorder files. Optional: set a target output file size in KB/MB. |
+| 14 | 🗜️ **PDF Compressor** | Reduce **file storage size** (KB/MB) for email, uploads & form submissions. Page dimensions stay exactly the same. Choose preset level (Screen/eBook/Printer/Prepress) or set an exact target KB/MB. |
+| 15 | 📝 **DOCX → PDF** | Convert Word (.docx) documents to PDF — headings, paragraphs, bold/italic and lists preserved. |
 
-> **💡 Target File Size Feature** (Tools 12, 13, 14): Set an exact output size in KB or MB. FileFlux uses a binary-search algorithm to auto-find the optimal JPEG quality level that hits your target (within ±10%). Page layout and structure remain completely unchanged — only image compression quality is adjusted.
+> **💡 PDF Resizer vs PDF Compressor — What's the difference?**
+>
+> | | PDF Resizer | PDF Compressor |
+> |--|------------|----------------|
+> | **Changes** | Page dimensions (A4, Letter, mm) | File storage size (KB, MB) |
+> | **Page layout** | Changes to new size | Stays exactly the same |
+> | **Use case** | Print on specific paper, fix layout | Email attachment, govt form upload |
+> | **File size effect** | Little to no change | Significantly smaller file |
 
 ### 🛡️ Why FileFlux?
 
@@ -112,7 +118,7 @@ That's it. No `npm install`, no build process, no dependencies to manage.
 fileflux/
 ├── index.html      # Main HTML — all UI, SEO meta tags, structured data
 ├── style.css       # All styling — responsive, dark theme, animations
-├── script.js       # All 17 converter tools — pure vanilla JavaScript
+├── script.js       # All 16 converter tools — pure vanilla JavaScript
 ├── LICENSE         # MIT License
 └── README.md       # You are here
 ```
@@ -121,14 +127,14 @@ fileflux/
 
 ## ℹ️ Notes on Specific Features
 
-### Target File Size (PDF Resizer, Merger, Compressor)
-FileFlux uses a **binary search algorithm** to hit your requested KB/MB target. It renders each page as a JPEG at varying quality levels (up to 9 iterations) until the output is within ~8% of your target. Page dimensions, layout, and text structure are never changed — only the image compression quality is adjusted.
-
-### PDF → DOCX
-Since PDF is not a structured document format, the conversion extracts text line-by-line from each page using PDF.js. Short all-caps lines are auto-detected as headings. For PDFs with complex layouts (multi-column, tables, embedded fonts), the output may need minor manual cleanup in Word.
-
 ### DOCX → PDF
-Uses Mammoth.js to extract raw text and jsPDF to generate a cleanly formatted PDF. Basic heading detection is applied. Complex DOCX formatting (tables, images, custom styles) is simplified in the output.
+Uses Mammoth.js to extract raw text content and jsPDF to generate a cleanly formatted PDF. Basic heading detection is applied (short all-caps lines are bolded). Complex DOCX formatting like tables, images, and custom styles is simplified in the output.
+
+### PDF Compressor — Target File Size
+The compressor uses a **binary search algorithm** to hit your requested KB/MB target. It renders each page as JPEG at varying quality levels (up to 10 iterations) until within ~8% of your target. Page dimensions are never changed.
+
+### PDF Resizer — Content Scaling
+When resizing to a new page size, content is scaled proportionally and centered on the new page. Use "Scale content to fit" checkbox (on by default) to ensure nothing is cropped.
 
 ---
 
@@ -149,6 +155,7 @@ Contributions are welcome! Here's how:
 - Image color picker / palette extractor
 - Batch file processing
 - PDF page splitter / extractor
+- PDF → DOCX (requires server-side processing for accurate formatting)
 - Dark/light mode toggle
 - i18n / Hindi language support
 
