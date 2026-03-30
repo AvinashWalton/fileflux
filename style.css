@@ -866,6 +866,38 @@ select:focus {
 }
 
 
+
+/* ============================================================
+   COMPRESS MODE TOGGLE
+   ============================================================ */
+.compress-mode-toggle {
+  display: flex;
+  gap: 0;
+  margin: 20px 0 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--c-border);
+  width: fit-content;
+}
+.mode-btn {
+  background: var(--c-surface2);
+  border: none;
+  color: var(--c-muted);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 9px 20px;
+  cursor: pointer;
+  transition: all var(--transition);
+  pointer-events: all;
+}
+.mode-btn:first-child { border-right: 1px solid var(--c-border); }
+.mode-btn.active {
+  background: linear-gradient(135deg, var(--c-accent), var(--c-accent2));
+  color: #0b0e17;
+}
+.mode-btn:hover:not(.active) { background: var(--c-surface); color: var(--c-text); }
+
 /* ============================================================
    TARGET SIZE ROW (PDF Resizer / Merger / Compressor)
    ============================================================ */
