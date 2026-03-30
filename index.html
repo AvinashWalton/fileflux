@@ -96,12 +96,12 @@
     <div class="container hero-content">
       <div class="hero-badge">🔒 100% In-Browser · No Upload · No Signup</div>
       <h1 id="hero-heading">Convert Files <span class="accent">Instantly.</span><br/>No Server. No Cost.</h1>
-      <p class="hero-sub">PNG ↔ JPG · PDF ↔ Image · Text ↔ Image · PDF ↔ Text · PDF Compress · PDF Resize · PDF Merge · DOCX ↔ PDF — all in your browser.</p>
+      <p class="hero-sub">PNG ↔ JPG · PDF ↔ Image · Text ↔ Image · PDF ↔ Text · PDF Compress · PDF Resize · PDF Merge · DOCX → PDF — all in your browser.</p>
       <a href="#converters" class="btn-primary">Start Converting ↓</a>
     </div>
     <div class="hero-ticker" aria-hidden="true">
       <div class="ticker-track">
-        <span>PNG→JPG</span><span>JPG→PNG</span><span>PDF→Image</span><span>Image→PDF</span><span>Text→Image</span><span>Image→Text</span><span>PDF→Text</span><span>Text→PDF</span><span>Image Resize</span><span>Image Compress</span><span>Merge Images</span><span>PDF Resizer</span><span>PDF Merger</span><span>PDF Compressor</span><span>DOCX→PDF</span><span>PDF→DOCX</span><span>PNG→JPG</span><span>JPG→PNG</span><span>PDF→Image</span><span>Image→PDF</span><span>Text→Image</span><span>Image→Text</span><span>PDF→Text</span><span>Text→PDF</span><span>Image Resize</span><span>Image Compress</span><span>Merge Images</span><span>PDF Resizer</span><span>PDF Merger</span>
+        <span>PNG→JPG</span><span>JPG→PNG</span><span>PDF→Image</span><span>Image→PDF</span><span>Text→Image</span><span>Image→Text</span><span>PDF→Text</span><span>Text→PDF</span><span>Image Resize</span><span>Image Compress</span><span>Merge Images</span><span>PDF Resizer</span><span>PDF Merger</span><span>PDF Compressor</span><span>DOCX→PDF</span><span>PNG→JPG</span><span>JPG→PNG</span><span>PDF→Image</span><span>Image→PDF</span><span>Text→Image</span><span>Image→Text</span><span>PDF→Text</span><span>Text→PDF</span><span>Image Resize</span><span>Image Compress</span><span>Merge Images</span><span>PDF Resizer</span><span>PDF Merger</span>
       </div>
     </div>
   </section>
@@ -128,7 +128,6 @@
         <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pdfmerge"   data-tab="pdfmerge">PDF Merger</button>
         <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pdfcompress" data-tab="pdfcompress">PDF Compressor</button>
         <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-docx2pdf"    data-tab="docx2pdf">DOCX → PDF</button>
-        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pdf2docx"    data-tab="pdf2docx">PDF → DOCX</button>
       </div>
 
       <!-- ---- PNG to JPG ---- -->
@@ -460,7 +459,7 @@
       <div class="tab-panel" id="tab-pdfresize" role="tabpanel">
         <div class="panel-card">
           <h3>PDF Resizer</h3>
-          <p class="panel-desc">Change the page size of every page in a PDF — scale to A4, A3, Letter, Legal, or a custom size. Optionally target a specific file size in KB/MB (content quality auto-adjusts).</p>
+          <p class="panel-desc">Change the page dimensions of every page in a PDF — convert to A4, A3, Letter, Legal, or any custom size. Content is scaled to fit the new page. File storage size is not the focus here — use PDF Compressor for that.</p>
           <label class="drop-zone" id="dz-pdfresize" for="file-pdfresize">
             <div class="dz-inner">
               <div class="dz-icon">📏</div>
@@ -474,9 +473,11 @@
               <select id="pdfresize-size">
                 <option value="a4">A4 (210 × 297 mm)</option>
                 <option value="a3">A3 (297 × 420 mm)</option>
-                <option value="letter">Letter (216 × 279 mm)</option>
-                <option value="legal">Legal (216 × 356 mm)</option>
-                <option value="custom">Custom</option>
+                <option value="letter">Letter (215.9 × 279.4 mm)</option>
+                <option value="legal">Legal (215.9 × 355.6 mm)</option>
+                <option value="a5">A5 (148 × 210 mm)</option>
+                <option value="b5">B5 (176 × 250 mm)</option>
+                <option value="custom">Custom Size</option>
               </select>
             </label>
             <label>Orientation
@@ -491,22 +492,16 @@
             <label id="custom-h-wrap" style="display:none">Custom Height (mm)
               <input type="number" id="pdfresize-ch" value="297" min="10" max="2000" />
             </label>
-            <label class="checkbox-label" style="align-self:end">
-              <input type="checkbox" id="pdfresize-fitcontent" checked /> Fit content to new size
-            </label>
-          </div>
-          <div class="target-size-row">
-            <label class="checkbox-label">
-              <input type="checkbox" id="pdfresize-targetsize-enable" /> Set target file size
-            </label>
-            <div id="pdfresize-targetsize-wrap" class="targetsize-inputs" style="display:none">
-              <input type="number" id="pdfresize-targetkb" min="50" max="999999" placeholder="e.g. 500" />
-              <select id="pdfresize-targetunit">
-                <option value="kb">KB</option>
-                <option value="mb">MB</option>
+            <label>Render Quality
+              <select id="pdfresize-quality">
+                <option value="1.5">Standard (faster)</option>
+                <option value="2.0" selected>High (recommended)</option>
+                <option value="3.0">Very High (slower)</option>
               </select>
-              <span class="targetsize-hint">⚠️ Page layout unchanged — only image quality adjusts to hit target size</span>
-            </div>
+            </label>
+            <label class="checkbox-label" style="align-self:end">
+              <input type="checkbox" id="pdfresize-fitcontent" checked /> Scale content to fit new page
+            </label>
           </div>
           <div id="pdfresize-info" class="info-badge" hidden></div>
           <div id="pdfresize-progress" class="progress-wrap" hidden>
@@ -557,7 +552,7 @@
       <div class="tab-panel" id="tab-pdfcompress" role="tabpanel">
         <div class="panel-card">
           <h3>PDF Compressor</h3>
-          <p class="panel-desc">Reduce your PDF file size by re-rendering pages at optimized quality. Choose a compression level or set an exact target size in KB/MB.</p>
+          <p class="panel-desc">Reduce your PDF file size (KB/MB) for email, uploads, or forms. Page dimensions stay exactly the same — only image quality is optimized. Choose a preset level or set an exact target size.</p>
           <label class="drop-zone" id="dz-pdfcompress" for="file-pdfcompress">
             <div class="dz-inner">
               <div class="dz-icon">🗜️</div>
@@ -566,37 +561,36 @@
             </div>
             <input type="file" id="file-pdfcompress" accept=".pdf,application/pdf" hidden />
           </label>
-          <div class="options-grid">
-            <label>Compression Level
-              <select id="pdfcompress-level">
-                <option value="screen">Screen (72 dpi, smallest)</option>
-                <option value="ebook" selected>eBook (150 dpi, balanced)</option>
-                <option value="printer">Printer (300 dpi, high quality)</option>
-                <option value="prepress">Prepress (300 dpi, max quality)</option>
-              </select>
-            </label>
-            <label>Render Scale
-              <select id="pdfcompress-scale">
-                <option value="0.8">0.8× (more compact)</option>
-                <option value="1.0" selected>1.0× (original size)</option>
-                <option value="1.5">1.5× (sharper)</option>
-                <option value="2.0">2.0× (high-res)</option>
-              </select>
-            </label>
+
+          <div class="compress-mode-toggle">
+            <button class="mode-btn active" id="compressmode-preset" type="button">Use Preset Level</button>
+            <button class="mode-btn" id="compressmode-target" type="button">Set Target Size</button>
           </div>
-          <div class="target-size-row">
-            <label class="checkbox-label">
-              <input type="checkbox" id="pdfcompress-targetsize-enable" /> Set exact target file size
-            </label>
-            <div id="pdfcompress-targetsize-wrap" class="targetsize-inputs" style="display:none">
+
+          <div id="compress-preset-panel">
+            <div class="options-grid">
+              <label>Compression Level
+                <select id="pdfcompress-level">
+                  <option value="screen">Maximum — Screen (smallest file, ~72 dpi)</option>
+                  <option value="ebook" selected>Balanced — eBook (~150 dpi, recommended)</option>
+                  <option value="printer">High Quality — Printer (~300 dpi)</option>
+                  <option value="prepress">Best Quality — Prepress (max quality)</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div id="compress-target-panel" style="display:none">
+            <div class="targetsize-inputs" style="display:flex; margin-top:12px;">
               <input type="number" id="pdfcompress-targetkb" min="10" max="999999" placeholder="e.g. 500" />
               <select id="pdfcompress-targetunit">
                 <option value="kb">KB</option>
                 <option value="mb">MB</option>
               </select>
-              <span class="targetsize-hint">⚠️ Binary search will auto-find the right quality to hit your target (±10%).</span>
+              <span class="targetsize-hint">Page size unchanged. Auto-adjusts image quality to hit your target (±10%).</span>
             </div>
           </div>
+
           <div id="pdfcompress-info" class="info-badge" hidden></div>
           <div id="pdfcompress-progress" class="progress-wrap" hidden>
             <div class="progress-bar"><div class="progress-fill" id="pdfcompress-fill"></div></div>
@@ -640,40 +634,6 @@
         </div>
       </div>
 
-      <!-- ---- PDF → DOCX ---- -->
-      <div class="tab-panel" id="tab-pdf2docx" role="tabpanel">
-        <div class="panel-card">
-          <h3>PDF → DOCX Converter</h3>
-          <p class="panel-desc">Extract text from a PDF and save it as a well-structured Word (.docx) document. Page breaks, paragraphs, and formatting are preserved as much as possible.</p>
-          <label class="drop-zone" id="dz-pdf2docx" for="file-pdf2docx">
-            <div class="dz-inner">
-              <div class="dz-icon">📄</div>
-              <div class="dz-text">Drop PDF file here or <span>browse</span></div>
-              <div class="dz-hint">Supports: .pdf (text-based PDFs work best)</div>
-            </div>
-            <input type="file" id="file-pdf2docx" accept=".pdf,application/pdf" hidden />
-          </label>
-          <div class="options-grid">
-            <label>Font Family
-              <select id="pdf2docx-font">
-                <option value="Arial">Arial</option>
-                <option value="Times New Roman">Times New Roman</option>
-                <option value="Calibri">Calibri</option>
-                <option value="Georgia">Georgia</option>
-              </select>
-            </label>
-            <label>Font Size (pt)
-              <input type="number" id="pdf2docx-fontsize" value="11" min="7" max="24" />
-            </label>
-          </div>
-          <div id="pdf2docx-info" class="info-badge" hidden></div>
-          <div id="pdf2docx-progress" class="progress-wrap" hidden>
-            <div class="progress-bar"><div class="progress-fill" id="pdf2docx-fill"></div></div>
-            <span id="pdf2docx-status"></span>
-          </div>
-          <button class="btn-convert" id="btn-pdf2docx" disabled>Convert to DOCX &amp; Download</button>
-        </div>
-      </div>
 
     </div><!-- /container -->
   </section>
